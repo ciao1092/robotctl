@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_joystick/flutter_joystick.dart';
-import 'package:robotctl/battery.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
@@ -52,6 +50,24 @@ class _IPSelectorPageState extends State<IPSelectorPage> {
 
   final TextEditingController _textEditingController = TextEditingController();
 
+  String? _validateAddress(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return "Address is required";
+    }
+
+    final uri = Uri.tryParse('ws://${value.trim()}');
+
+    if (uri == null || uri.host.isEmpty) {
+      return "Invalid address";
+    }
+
+    if (uri.port != 0 && (uri.port < 1 || uri.port > 65535)) {
+      return "Invalid port";
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -76,16 +92,22 @@ class _IPSelectorPageState extends State<IPSelectorPage> {
                       border: OutlineInputBorder(),
                       hintText: "Address",
                     ),
+                    validator: _validateAddress,
                   ),
                 ),
                 SizedBox(width: 10),
                 ElevatedButton(
                   onPressed: () {
+                    if (!_formKey.currentState!.validate()) {
+                      return;
+                    }
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            MyHomePage(ipAddress: _textEditingController.text),
+                        builder: (context) => MyHomePage(
+                          ipAddress: _textEditingController.text.trim(),
+                        ),
                       ),
                     );
                   },
@@ -129,8 +151,6 @@ class _MyHomePageState extends State<MyHomePage> {
   double smoothedX = 0;
   double smoothedY = 0;
   double alpha = 0.18;
-
-  double battery = 0.0;
 
   static const double deadZone = 0.12;
   static const double curve = 1.8;
@@ -195,17 +215,6 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     channel?.sink.close();
     super.dispose();
-  }
-
-  double? getBatteryFromRawData(String raw) {
-    final Map<String, dynamic> data = jsonDecode(raw);
-
-    var x = data['battery']?.toString();
-    if (x == null) return null;
-
-    final double? battery = double.tryParse(x);
-
-    return battery;
   }
 
   @override
@@ -283,8 +292,6 @@ class _MyHomePageState extends State<MyHomePage> {
           case ConnectionState.active:
             if (snapshot.hasData) {
               lastMessage = snapshot.data.toString();
-              final bat = getBatteryFromRawData(snapshot.data.toString());
-              if (bat != null) battery = bat;
             }
         }
 
@@ -292,11 +299,7 @@ class _MyHomePageState extends State<MyHomePage> {
           appBar: AppBar(
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
             title: Row(
-              children: [
-                Text(widget.title),
-                Spacer(),
-                BatteryIcon(level: battery),
-              ],
+              children: [Text(widget.title), Spacer(), const Text("Connected")],
             ),
           ),
           body: Center(
